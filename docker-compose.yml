@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kelo-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kelo_user
+      POSTGRES_PASSWORD: kelo_password
+      POSTGRES_DB: kelo_erp
+      TZ: Asia/Jakarta
+      PGTZ: Asia/Jakarta
+    ports:
+      - "5432:5432"
+    volumes:
+      - kelo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kelo_user -d kelo_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  kelo_pgdata:
+    driver: local
