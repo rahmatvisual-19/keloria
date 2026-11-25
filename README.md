@@ -24,26 +24,36 @@ Berdasarkan audit direktori workspace `keloria`:
    cp .env.example .env.local
    cp .env.example .env
    ```
-   Sesuaikan `DATABASE_URL` dan `JWT_SECRET` (minimal 32 karakter).
+   Sesuaikan `DATABASE_URL`, `DIRECT_URL` (jika memakai Supabase Transaction Pooler), dan `JWT_SECRET` (minimal 32 karakter).
 
-2. Jalankan PostgreSQL lokal (bila Docker terpasang):
-   ```bash
-   docker compose up -d
-   ```
+2. Siapkan PostgreSQL:
+   - Menggunakan layanan cloud seperti **Supabase** (isi `DATABASE_URL` port `6543?pgbouncer=true` & `DIRECT_URL` port `5432`), **atau**
+   - Jalankan PostgreSQL lokal via Docker Compose:
+     ```bash
+     docker compose up -d
+     ```
 
 3. Pasang dependency (bila belum):
    ```bash
-   npm install
+   npm install --legacy-peer-deps
+   ```
+   *(Gunakan `--legacy-peer-deps` bila memakai Node.js v24+ / npm v11 untuk melewati konflik `peerOptional @types/node` pada `vitest`.)*
+
+4. Terapkan skema Prisma ke database, generate client, dan jalankan seeder master data:
+   ```bash
+   npx prisma db push
+   npm run db:generate
+   npm run db:seed
    ```
 
-4. Jalankan server pengembangan:
+5. Jalankan server pengembangan:
    ```bash
    npm run dev
    # atau pada port 4000:
    npm run dev:4000
    ```
 
-5. Uji endpoint health check:
+6. Uji endpoint health check:
    ```bash
    curl http://localhost:3000/api/v1/health
    ```
@@ -58,13 +68,26 @@ Berdasarkan audit direktori workspace `keloria`:
 | `npm run lint` | Pemeriksaan ESLint |
 | `npm run test` | Jalankan seluruh unit/integration test (Vitest) |
 | `npm run format` | Format kode menggunakan Prettier |
-| `npm run db:generate` | Generate Prisma Client (mulai Fase 1) |
-| `npm run db:migrate` | Jalankan migrasi Prisma (mulai Fase 1) |
-| `npm run db:seed` | Jalankan seed data awal idempoten (mulai Fase 1) |
+| `npm run db:generate` | Generate Prisma Client |
+| `npx prisma db push` | Terapkan `prisma/schema.prisma` langsung ke database |
+| `npm run db:migrate` | Jalankan migrasi Prisma (`prisma migrate dev`) |
+| `npm run db:seed` | Jalankan seed master data awal idempoten (RBAC, akun, 16 produk) |
+
+## Akun & Data Seed Awal (`npm run db:seed`)
+
+Seeder di `prisma/seed.ts` bersifat idempoten dan hanya mengisi **master data** (4 role, 4 modul, 16 matriks `role_permissions`, 4 akun pengguna, dan 16 produk asli PT Keloria Moringa Jaya sesuai Katalog 2025) tanpa BOM maupun data transaksi contoh.
+
+| Username | Nama Lengkap | Role | Gaji Pokok | Password Awal |
+|---|---|---|---|---|
+| `owner` | Ibu Syahrani Devi | `Owner` | Rp 0 | `owner123` |
+| `manager` | Kaesang Pangarep | `Manager/SDM` | Rp 4.800.000 | `manager123` |
+| `pegawai` | Mayadi Alamsyah | `Pegawai` | Rp 3.200.000 | `pegawai123` |
+| `pkl` | Ferdyan Darwis | `Anak PKL` | Rp 0 | `magangpkl123` |
+
+> **WAJIB segera ganti password akun seed** di atas sebelum pemakaian produksi.
 
 ## Catatan Keamanan & Operasional
 
-- **Password akun seed (Fase 1):** Akun contoh (`owner`, `manager`, `pegawai`, `pkl`) akan memakai password awal `Kelo#12345` — **WAJIB segera diganti** sebelum pemakaian nyata.
 - **Rate-limit login:** Menggunakan penyimpanan in-memory (5 percobaan/menit/IP). Catatan keterbatasan: pada deployment multi-instance/serverless, counter in-memory tidak terbagi antar instance dan dapat di-reset saat cold start; untuk skala produksi penuh disarankan memakai Redis/Upstash.
 - **Penyimpanan bukti bayar:** Driver bawaan menyimpan file di luar folder `public` (`UPLOAD_DIR`) dengan nama file acak dan diunduh lewat endpoint terautentikasi. Bila deploy ke platform serverless (misalnya Vercel) yang sistem berkasnya tidak persisten, ubah driver ke penyimpanan objek cloud (Supabase Storage atau Vercel Blob).
 - **Backup basis data:** Gunakan `scripts/backup-db.sh` (Linux/macOS, dapat dijadwalkan dengan `cron`) atau `scripts/backup-db.ps1` (Windows PowerShell) berbasis `pg_dump`.
