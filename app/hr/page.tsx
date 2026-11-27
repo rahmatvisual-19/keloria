@@ -19,7 +19,8 @@ import { PayrollType } from "@/lib/types/domain";
 type HrTab = "employees" | "payroll";
 
 export default function HrPage() {
-  const { isOwner, can, users, setUsers, payrolls, setPayrolls, logActivity } = useAppStore();
+  const { isOwner, isManagerOrOwner, can, users, setUsers, payrolls, setPayrolls, logActivity } =
+    useAppStore();
   const { showToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<HrTab>("employees");
@@ -102,7 +103,7 @@ export default function HrPage() {
           role_name: assignedRole,
           employment_type: values.employment_type,
           pay_scheme: values.pay_scheme,
-          base_salary: isOwner ? toDecimalString(values.base_salary) : "0.00",
+          base_salary: isManagerOrOwner ? toDecimalString(values.base_salary) : "0.00",
           start_date: values.start_date,
           end_date: values.end_date,
           status: "Aktif",
@@ -118,9 +119,7 @@ export default function HrPage() {
       showToast(
         `Pegawai ${values.full_name} berhasil ditambahkan`,
         "success",
-        isOwner
-          ? `Role: ${assignedRole}`
-          : `Role: ${assignedRole} • Gaji pokok menunggu pengaturan Owner.`,
+        `Role: ${assignedRole}`,
       );
     } else if (modalMode === "edit" && editingEmployee) {
       setUsers((prev) =>
@@ -134,12 +133,10 @@ export default function HrPage() {
                 pay_scheme: values.pay_scheme,
                 start_date: values.start_date,
                 end_date: values.end_date,
-                ...(isOwner
-                  ? {
-                      role_name: values.role_name,
-                      base_salary: toDecimalString(values.base_salary),
-                    }
+                ...(isManagerOrOwner
+                  ? { base_salary: toDecimalString(values.base_salary) }
                   : {}),
+                ...(isOwner ? { role_name: values.role_name } : {}),
               }
             : u,
         ),
@@ -231,12 +228,12 @@ export default function HrPage() {
       header: "Gaji Pokok",
       align: "right",
       render: (u) =>
-        isOwner ? (
+        isManagerOrOwner ? (
           <span className="font-semibold text-slate-900">{formatRupiah(u.base_salary)}</span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
             <Lock className="h-3 w-3" />
-            Disembunyikan (Owner-only)
+            Disembunyikan
           </span>
         ),
     },
@@ -255,7 +252,7 @@ export default function HrPage() {
             ariaLabel={`Aksi untuk ${u.full_name}`}
             items={[
               {
-                label: isOwner ? "Edit Data Pekerja" : "Edit Data Non-Sensitif",
+                label: "Edit Data Pekerja",
                 icon: <Pencil className="h-3.5 w-3.5" />,
                 onClick: () => {
                   setEditingEmployee(u);
@@ -315,23 +312,21 @@ export default function HrPage() {
     <AppLayout>
       <PageHeader
         title="Human Resources (HR)"
-        description={
-          isOwner
-            ? "Kelola data seluruh pekerja, masa kerja, gaji pokok, penggajian bulanan/mingguan, dan kasbon."
-            : "Mode Manager/SDM (Delegasi Terbatas): Anda dapat menambah Pegawai/Anak PKL serta memperbarui data non-sensitif. Gaji pokok & payroll tetap terkunci khusus Owner."
-        }
+        description="Kelola data pegawai tetap & anak PKL, masa kerja, skema gaji pokok, penggajian bulanan/mingguan, serta kasbon."
         actions={
-          <button
-            type="button"
-            onClick={() => {
-              setEditingEmployee(null);
-              setModalMode("create");
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
-          >
-            <Plus className="h-4 w-4" />
-            {isOwner ? "Tambah Pegawai / Pengguna" : "Tambah Pegawai / PKL"}
-          </button>
+          can("HR", "create") ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingEmployee(null);
+                setModalMode("create");
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              <Plus className="h-4 w-4" />
+              {isOwner ? "Tambah Pegawai / Pengguna" : "Tambah Pegawai / PKL"}
+            </button>
+          ) : null
         }
       />
 
@@ -345,7 +340,7 @@ export default function HrPage() {
               : "bg-white text-slate-700 hover:bg-slate-100"
           }`}
         >
-          Data Pekerja
+          Data Pegawai &amp; PKL
         </button>
         <button
           type="button"
@@ -356,7 +351,7 @@ export default function HrPage() {
               : "bg-white text-slate-700 hover:bg-slate-100"
           }`}
         >
-          Payroll &amp; Riwayat (Owner)
+          Penggajian &amp; Kasbon
         </button>
       </div>
 
@@ -371,7 +366,7 @@ export default function HrPage() {
       )}
 
       {activeTab === "payroll" &&
-        (isOwner ? (
+        (isManagerOrOwner ? (
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
               <h2 className="text-base font-bold text-slate-900">Input Penggajian / Kasbon</h2>
@@ -526,9 +521,11 @@ export default function HrPage() {
         ) : (
           <div className="flex flex-col items-center rounded-xl border border-slate-200 bg-white p-12 text-center">
             <Lock className="h-8 w-8 text-slate-400" />
-            <h3 className="mt-3 text-base font-bold text-slate-900">Akses Khusus Owner (403)</h3>
+            <h3 className="mt-3 text-base font-bold text-slate-900">
+              Akses Khusus Owner &amp; Manager (403)
+            </h3>
             <p className="mt-1 max-w-md text-sm text-slate-600">
-              Fitur payroll dan riwayat penggajian hanya dapat diakses oleh Owner UMKM Keloria.
+              Fitur penggajian dan kasbon hanya dapat diakses oleh Owner dan Manager/SDM.
             </p>
           </div>
         ))}
@@ -537,6 +534,7 @@ export default function HrPage() {
         open={modalMode !== null}
         mode={modalMode ?? "create"}
         isOwner={isOwner}
+        canManageSalary={isManagerOrOwner}
         initialUser={editingEmployee}
         existingUsernames={users.map((u) => u.username)}
         onSubmit={handleSaveEmployee}

@@ -40,6 +40,15 @@ export type PermissionMatrix = Record<
   Record<PermissionAction, boolean>
 >;
 
+/**
+ * Override hak akses khusus per individu (`user_permissions`),
+ * menimpa nilai bawaan dari `role_permissions` untuk user tertentu.
+ */
+export type UserPermissionOverrides = Record<
+  number,
+  Partial<Record<ModuleCode, Partial<Record<PermissionAction, boolean>>>>
+>;
+
 export interface SessionUser {
   user_id: number;
   full_name: string;
@@ -62,7 +71,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<RoleName, PermissionMatrix> = {
     SALES: { view: true, create: true, edit: true, delete: false },
     SCM: { view: true, create: true, edit: true, delete: false },
     FINANCE: { view: true, create: true, edit: true, delete: false },
-    HR: { view: true, create: false, edit: true, delete: false },
+    HR: { view: true, create: true, edit: true, delete: false },
   },
   Pegawai: {
     SALES: { view: true, create: true, edit: true, delete: false },
@@ -73,7 +82,7 @@ export const ROLE_PERMISSION_DEFAULTS: Record<RoleName, PermissionMatrix> = {
   "Anak PKL": {
     SALES: { view: true, create: true, edit: true, delete: false },
     SCM: { view: true, create: true, edit: true, delete: false },
-    FINANCE: { view: true, create: false, edit: false, delete: false },
+    FINANCE: { view: false, create: false, edit: false, delete: false },
     HR: { view: false, create: false, edit: false, delete: false },
   },
 };

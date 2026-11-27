@@ -6,8 +6,10 @@ import {
   AlertTriangle,
   ArrowRight,
   Factory,
+  Package,
   ShoppingBag,
   TrendingUp,
+  Users,
   Wallet,
 } from "lucide-react";
 import {
@@ -28,21 +30,59 @@ import { formatDate, formatRupiah } from "@/lib/client/format";
 import { MONTHLY_SALES_COMPARISON } from "@/lib/mock/data";
 
 export default function DashboardPage() {
-  const { currentUser, isOwner, orders, invoices, lowStockProducts } = useAppStore();
+  const {
+    currentUser,
+    isOwner,
+    isManagerOrOwner,
+    can,
+    orders,
+    invoices,
+    expenses,
+    payrolls,
+    products,
+    users,
+    lowStockProducts,
+  } = useAppStore();
+
+  const roleName = currentUser?.role_name ?? "Anak PKL";
+  const isPkl = roleName === "Anak PKL";
+  const hideMoney = isPkl && !can("FINANCE", "view");
 
   const totalOrderValue = orders.reduce((acc, o) => acc + Number(o.total_amount), 0);
+  const activeOrderCount = orders.filter(
+    (o) => o.order_status !== "Selesai" && o.order_status !== "Dibatalkan",
+  ).length;
   const activeProductionCount = orders.filter((o) =>
     ["DP_Lunas", "Produksi", "Packing", "Karantina", "Siap_Kirim"].includes(o.order_status),
   ).length;
-  const totalReceivables = invoices
-    .filter((i) => i.payment_status !== "Lunas")
-    .reduce((acc, i) => acc + Math.max(0, Number(i.total_billed) - Number(i.amount_paid)), 0);
+  const shippingCount = orders.filter((o) =>
+    ["Siap_Kirim", "Dikirim"].includes(o.order_status),
+  ).length;
+  const unpaidInvoices = invoices.filter((i) => i.payment_status !== "Lunas");
+  const totalReceivables = unpaidInvoices.reduce(
+    (acc, i) => acc + Math.max(0, Number(i.total_billed) - Number(i.amount_paid)),
+    0,
+  );
+  const kasMasuk = invoices.reduce((acc, i) => acc + Number(i.amount_paid), 0);
+  const kasKeluar =
+    expenses.reduce((acc, e) => acc + Number(e.amount), 0) +
+    payrolls.reduce((acc, p) => acc + Number(p.net_amount), 0);
+  const labaBersih = kasMasuk - kasKeluar;
+  const activeEmployeeCount = users.filter((u) => u.status === "Aktif").length;
+
+  const dashboardDescription = isOwner
+    ? "Dasbor Eksekutif UMKM Keloria — performa penjualan Online vs PO Besar, arus kas, piutang, dan laba bersih."
+    : isManagerOrOwner
+      ? "Ringkasan operasional, keuangan, dan SDM — pesanan aktif, progres produksi, piutang, dan tim aktif."
+      : hideMoney
+        ? "Ringkasan operasional harian — pesanan aktif, progres produksi & pengiriman, serta stok produk."
+        : "Ringkasan operasional harian & tagihan berjalan — pesanan, produksi, stok online, dan verifikasi invoice.";
 
   return (
     <AppLayout>
       <PageHeader
         title={`Selamat datang, ${currentUser?.full_name ?? "Pengguna"}`}
-        description="Ringkasan operasional harian UMKM Keloria — pesanan B2B & B2C, produksi, stok online, dan tagihan."
+        description={dashboardDescription}
         actions={
           <Link
             href="/sales"
@@ -83,54 +123,205 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Kartu KPI Utama */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Total Nilai Pesanan</span>
-            <ShoppingBag className="h-4 w-4 text-emerald-700" />
+      {/* Kartu KPI Utama (disesuaikan per Role) */}
+      {hideMoney ? (
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Pesanan Aktif</span>
+              <ShoppingBag className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {activeOrderCount} Order
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{orders.length} total pesanan tercatat</p>
           </div>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
-            {formatRupiah(totalOrderValue)}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">{orders.length} pesanan tercatat bulan ini</p>
-        </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Antrean Produksi & Kirim</span>
-            <Factory className="h-4 w-4 text-sky-700" />
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Antrean Produksi &amp; Kirim</span>
+              <Factory className="h-4 w-4 text-sky-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {activeProductionCount} Order
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {shippingCount} siap kirim / sedang dikirim
+            </p>
           </div>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
-            {activeProductionCount} Order
-          </p>
-          <p className="mt-1 text-xs text-slate-500">Sedang diproses di jalur SCM</p>
-        </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Piutang Belum Lunas</span>
-            <Wallet className="h-4 w-4 text-amber-700" />
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Alert Stok Online</span>
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {lowStockProducts.length} SKU
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Perlu persiapan stok produk jadi</p>
           </div>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
-            {formatRupiah(totalReceivables)}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {invoices.filter((i) => i.payment_status !== "Lunas").length} invoice menunggu verifikasi
-          </p>
-        </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Alert Stok Online</span>
-            <AlertTriangle className="h-4 w-4 text-red-600" />
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Katalog Produk Aktif</span>
+              <Package className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {products.length} Produk
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Tersedia untuk input PO &amp; Online</p>
           </div>
-          <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
-            {lowStockProducts.length} SKU
-          </p>
-          <p className="mt-1 text-xs text-slate-500">Perlu persiapan stok produk jadi</p>
         </div>
-      </div>
+      ) : isOwner ? (
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Total Nilai Pesanan</span>
+              <ShoppingBag className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {formatRupiah(totalOrderValue)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{orders.length} pesanan tercatat bulan ini</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Laba Bersih (Arus Kas)</span>
+              <TrendingUp className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-emerald-900 tabular-nums">
+              {formatRupiah(labaBersih)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Kas masuk {formatRupiah(kasMasuk)}</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Piutang Belum Lunas</span>
+              <Wallet className="h-4 w-4 text-amber-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {formatRupiah(totalReceivables)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {unpaidInvoices.length} invoice menunggu verifikasi
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Alert Stok Online</span>
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {lowStockProducts.length} SKU
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {activeProductionCount} order sedang di jalur SCM
+            </p>
+          </div>
+        </div>
+      ) : isManagerOrOwner ? (
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Total Nilai Pesanan</span>
+              <ShoppingBag className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {formatRupiah(totalOrderValue)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{orders.length} pesanan tercatat bulan ini</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Antrean Produksi &amp; Kirim</span>
+              <Factory className="h-4 w-4 text-sky-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {activeProductionCount} Order
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Sedang diproses di jalur SCM</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Piutang Belum Lunas</span>
+              <Wallet className="h-4 w-4 text-amber-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {formatRupiah(totalReceivables)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {unpaidInvoices.length} invoice menunggu verifikasi
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Tim &amp; SDM Aktif</span>
+              <Users className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {activeEmployeeCount} Orang
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {users.filter((u) => u.employment_type === "PKL").length} Anak PKL •{" "}
+              {lowStockProducts.length} alert stok
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Pesanan Aktif</span>
+              <ShoppingBag className="h-4 w-4 text-emerald-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {activeOrderCount} Order
+            </p>
+            <p className="mt-1 text-xs text-slate-500">{orders.length} total pesanan bulan ini</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Antrean Produksi &amp; Kirim</span>
+              <Factory className="h-4 w-4 text-sky-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {activeProductionCount} Order
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Sedang diproses di jalur SCM</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Tagihan Berjalan</span>
+              <Wallet className="h-4 w-4 text-amber-700" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {formatRupiah(totalReceivables)}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {unpaidInvoices.length} invoice menunggu verifikasi
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">Alert Stok Online</span>
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 tabular-nums">
+              {lowStockProducts.length} SKU
+            </p>
+            <p className="mt-1 text-xs text-slate-500">Perlu persiapan stok produk jadi</p>
+          </div>
+        </div>
+      )}
 
       {/* Grafik B2B vs B2C (Owner-only) + Pesanan Terbaru */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -177,12 +368,17 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs lg:col-span-2">
-            <h2 className="text-base font-bold text-slate-900">Ringkasan Operasional Anda</h2>
+            <h2 className="text-base font-bold text-slate-900">
+              Pintasan Operasional — {roleName}
+            </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Grafik komparasi omzet B2B vs B2C hanya tersedia untuk role Owner. Gunakan pintasan di
-              bawah untuk pekerjaan harian Anda.
+              {hideMoney
+                ? "Fokus operasional harian Sales & SCM. Data keuangan dan penggajian disembunyikan untuk role Anak PKL."
+                : isManagerOrOwner
+                  ? "Anda memiliki akses penuh operasional Sales, SCM, Finance (termasuk Laporan Bulanan), serta HR & Payroll."
+                  : "Grafik eksekutif omzet & laba bersih hanya tersedia untuk Owner. Gunakan pintasan di bawah untuk pekerjaan harian Anda."}
             </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Link
                 href="/sales"
                 className="rounded-xl border border-slate-200 p-4 transition-colors hover:border-emerald-700 hover:bg-emerald-50/40"
@@ -195,8 +391,26 @@ export default function DashboardPage() {
                 className="rounded-xl border border-slate-200 p-4 transition-colors hover:border-emerald-700 hover:bg-emerald-50/40"
               >
                 <p className="text-sm font-semibold text-slate-900">Papan Produksi</p>
-                <p className="mt-1 text-xs text-slate-500">Perbarui status produksi & stok online</p>
+                <p className="mt-1 text-xs text-slate-500">Perbarui status produksi &amp; resi kirim</p>
               </Link>
+              {can("FINANCE", "view") && (
+                <Link
+                  href="/finance"
+                  className="rounded-xl border border-slate-200 p-4 transition-colors hover:border-emerald-700 hover:bg-emerald-50/40"
+                >
+                  <p className="text-sm font-semibold text-slate-900">Invoice &amp; Biaya</p>
+                  <p className="mt-1 text-xs text-slate-500">Verifikasi pembayaran &amp; catat pengeluaran</p>
+                </Link>
+              )}
+              {can("HR", "view") && (
+                <Link
+                  href="/hr"
+                  className="rounded-xl border border-slate-200 p-4 transition-colors hover:border-emerald-700 hover:bg-emerald-50/40"
+                >
+                  <p className="text-sm font-semibold text-slate-900">HR &amp; Penggajian</p>
+                  <p className="mt-1 text-xs text-slate-500">Kelola data pegawai, PKL, gaji &amp; kasbon</p>
+                </Link>
+              )}
               <Link
                 href="/panduan"
                 className="rounded-xl border border-slate-200 p-4 transition-colors hover:border-emerald-700 hover:bg-emerald-50/40"
@@ -231,9 +445,15 @@ export default function DashboardPage() {
                 </p>
                 <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
                   <span>{formatDate(order.order_date)}</span>
-                  <span className="font-semibold text-slate-900 tabular-nums">
-                    {formatRupiah(order.total_amount)}
-                  </span>
+                  {hideMoney ? (
+                    <span className="font-semibold text-slate-700">
+                      {order.order_channel} • {order.items.reduce((s, it) => s + it.qty, 0)} unit
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-slate-900 tabular-nums">
+                      {formatRupiah(order.total_amount)}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

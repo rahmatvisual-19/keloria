@@ -9,8 +9,10 @@ import {
   Lock,
   Pencil,
   Plus,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
+  UserCog,
   X,
 } from "lucide-react";
 import { AppLayout } from "@/components/layouts/AppLayout";
@@ -61,6 +63,10 @@ export default function UsersPage() {
     setUsers,
     rolePermissions,
     updateRolePermission,
+    userPermissions,
+    setUserPermissionOverride,
+    resetUserPermissionOverrides,
+    getEffectivePermissions,
     activityLogs,
     logActivity,
     sessionLogs,
@@ -71,6 +77,18 @@ export default function UsersPage() {
   const [toggleTarget, setToggleTarget] = useState<MockUser | null>(null);
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [editingUser, setEditingUser] = useState<MockUser | null>(null);
+
+  // Target user untuk panel user_permissions (izin khusus per individu)
+  const nonOwnerUsers = useMemo(() => users.filter((u) => u.role_name !== "Owner"), [users]);
+  const [selectedOverrideUserId, setSelectedOverrideUserId] = useState<number>(() => {
+    const pkl = users.find((u) => u.role_name === "Anak PKL");
+    return pkl?.user_id ?? nonOwnerUsers[0]?.user_id ?? 0;
+  });
+  const selectedOverrideUser = useMemo(
+    () =>
+      nonOwnerUsers.find((u) => u.user_id === selectedOverrideUserId) ?? nonOwnerUsers[0] ?? null,
+    [nonOwnerUsers, selectedOverrideUserId],
+  );
 
   // Modal Reset Password
   const [resetTarget, setResetTarget] = useState<MockUser | null>(null);
@@ -370,8 +388,8 @@ export default function UsersPage() {
   return (
     <AppLayout>
       <PageHeader
-        title="Pengguna & Hak Akses (RBAC)"
-        description="Khusus Owner — kelola akun pengguna, reset kata sandi, matriks izin dinamis, serta log aktivitas & sesi."
+        title="Pengaturan Sistem & Akses (RBAC)"
+        description="Khusus Owner — kelola akun pengguna, reset kata sandi, hak akses per role (role_permissions) & per individu (user_permissions), serta log aktivitas."
         actions={
           <button
             type="button"
@@ -397,7 +415,7 @@ export default function UsersPage() {
               : "bg-white text-slate-700 hover:bg-slate-100"
           }`}
         >
-          Daftar Pengguna ({users.length})
+          Manajemen Akun ({users.length})
         </button>
         <button
           type="button"
@@ -408,7 +426,7 @@ export default function UsersPage() {
               : "bg-white text-slate-700 hover:bg-slate-100"
           }`}
         >
-          Pengaturan Hak Akses (Matriks RBAC)
+          Hak Akses Role &amp; User
         </button>
         <button
           type="button"
@@ -435,88 +453,237 @@ export default function UsersPage() {
       )}
 
       {activeTab === "rbac" && (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
-          <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-4">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <ShieldCheck className="h-4 w-4 text-emerald-700" />
-              Matriks Izin Dinamis (V = View, C = Create, E = Edit, D = Delete)
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Baris Owner selalu terkunci penuh. Aturan keras (user management, payroll, gaji pokok,
-              dasbor penjualan, laporan keuangan) tetap Owner-only apa pun isi matriks.
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-                  <th className="px-5 py-3">Role</th>
-                  {MODULES.map((mod) => (
-                    <th key={mod} className="px-4 py-3 text-center">
-                      {mod}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {ROLES.map((role) => {
-                  const locked = role === "Owner";
-                  return (
-                    <tr key={role} className={locked ? "bg-emerald-50/30" : ""}>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <StatusBadge status={role} />
-                          {locked && <Lock className="h-3.5 w-3.5 text-slate-400" />}
-                        </div>
-                      </td>
-                      {MODULES.map((mod) => (
-                        <td key={mod} className="px-4 py-3.5">
-                          <div className="flex items-center justify-center gap-2">
-                            {ACTIONS.map((act) => {
-                              const checked = rolePermissions[role][mod][act.key];
-                              return (
-                                <label
-                                  key={act.key}
-                                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${
-                                    checked
-                                      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
-                                      : "border-slate-200 bg-white text-slate-400"
-                                  } ${locked ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={locked}
-                                    onChange={(e) => {
-                                      updateRolePermission(role, mod, act.key, e.target.checked);
-                                      logActivity(
-                                        "USERS",
-                                        "UPDATE",
-                                        `${role}:${mod}.${act.key}`,
-                                        `Mengubah izin ${role} pada ${mod}.${act.key} menjadi ${
-                                          e.target.checked ? "AKTIF" : "NONAKTIF"
-                                        }.`,
-                                      );
-                                      showToast(
-                                        `Izin ${role} → ${mod}.${act.key} diperbarui`,
-                                        "info",
-                                      );
-                                    }}
-                                    className="h-3.5 w-3.5 accent-emerald-800"
-                                  />
-                                  {act.short}
-                                </label>
-                              );
-                            })}
+        <div className="space-y-6">
+          {/* 1. Matriks role_permissions */}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+            <div className="border-b border-slate-200 bg-slate-50/70 px-5 py-4">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                Matriks Hak Akses per Jabatan (<code>role_permissions</code> — V = View, C = Create,
+                E = Edit, D = Delete)
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Baris Owner selalu terkunci penuh. Pengaturan default: Anak PKL (Sales &amp; SCM),
+                Pegawai (+Finance operasional), Manager/SDM (+HR &amp; Laporan Bulanan).
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                    <th className="px-5 py-3">Role</th>
+                    {MODULES.map((mod) => (
+                      <th key={mod} className="px-4 py-3 text-center">
+                        {mod}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {ROLES.map((role) => {
+                    const locked = role === "Owner";
+                    return (
+                      <tr key={role} className={locked ? "bg-emerald-50/30" : ""}>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <StatusBadge status={role} />
+                            {locked && <Lock className="h-3.5 w-3.5 text-slate-400" />}
                           </div>
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {MODULES.map((mod) => (
+                          <td key={mod} className="px-4 py-3.5">
+                            <div className="flex items-center justify-center gap-2">
+                              {ACTIONS.map((act) => {
+                                const checked = rolePermissions[role][mod][act.key];
+                                return (
+                                  <label
+                                    key={act.key}
+                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${
+                                      checked
+                                        ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                                        : "border-slate-200 bg-white text-slate-400"
+                                    } ${locked ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={locked}
+                                      onChange={(e) => {
+                                        updateRolePermission(role, mod, act.key, e.target.checked);
+                                        logActivity(
+                                          "USERS",
+                                          "UPDATE",
+                                          `${role}:${mod}.${act.key}`,
+                                          `Mengubah izin role ${role} pada ${mod}.${act.key} menjadi ${
+                                            e.target.checked ? "AKTIF" : "NONAKTIF"
+                                          }.`,
+                                        );
+                                        showToast(
+                                          `Izin ${role} → ${mod}.${act.key} diperbarui`,
+                                          "info",
+                                        );
+                                      }}
+                                      className="h-3.5 w-3.5 accent-emerald-800"
+                                    />
+                                    {act.short}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* 2. Panel user_permissions (Izin Khusus Per Individu) */}
+          {selectedOverrideUser && (
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+              <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                    <UserCog className="h-4 w-4 text-emerald-700" />
+                    Izin Khusus Per Individu (<code>user_permissions</code>)
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Berikan pengecualian akses untuk akun tertentu tanpa mengubah aturan default
+                    role. Contoh: pilih <strong>Anak PKL</strong> lalu centang{" "}
+                    <strong>FINANCE → V</strong> agar menu Finance muncul khusus untuk akun
+                    tersebut.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Pilih pengguna untuk izin khusus"
+                    value={selectedOverrideUser.user_id}
+                    onChange={(e) => setSelectedOverrideUserId(Number(e.target.value))}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-800"
+                  >
+                    {nonOwnerUsers.map((u) => (
+                      <option key={u.user_id} value={u.user_id}>
+                        {u.full_name} (@{u.username}) — {u.role_name}
+                        {userPermissions[u.user_id] ? " [Override]" : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {userPermissions[selectedOverrideUser.user_id] && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetUserPermissionOverrides(selectedOverrideUser.user_id);
+                        logActivity(
+                          "USERS",
+                          "UPDATE",
+                          selectedOverrideUser.username,
+                          `Mereset izin khusus (user_permissions) ${selectedOverrideUser.full_name} kembali ke default role ${selectedOverrideUser.role_name}.`,
+                        );
+                        showToast(
+                          `Izin khusus ${selectedOverrideUser.full_name} direset ke default role`,
+                          "info",
+                        );
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reset ke Default Role
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                      <th className="px-5 py-3">Modul</th>
+                      <th className="px-4 py-3">Default Role ({selectedOverrideUser.role_name})</th>
+                      <th className="px-4 py-3 text-center">Izin Efektif Akun Ini</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {MODULES.map((mod) => {
+                      const roleDefault = rolePermissions[selectedOverrideUser.role_name][mod];
+                      const effective = getEffectivePermissions(selectedOverrideUser)[mod];
+                      return (
+                        <tr key={mod}>
+                          <td className="px-5 py-3.5 font-semibold text-slate-900">{mod}</td>
+                          <td className="px-4 py-3.5 text-xs text-slate-500">
+                            {ACTIONS.filter((a) => roleDefault[a.key])
+                              .map((a) => a.short)
+                              .join(" · ") || "Tidak ada akses"}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center justify-center gap-2">
+                              {ACTIONS.map((act) => {
+                                const checked = effective[act.key];
+                                const isOverridden = checked !== roleDefault[act.key];
+                                return (
+                                  <label
+                                    key={act.key}
+                                    className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium ${
+                                      isOverridden
+                                        ? "border-amber-400 bg-amber-50 text-amber-950"
+                                        : checked
+                                          ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                                          : "border-slate-200 bg-white text-slate-400"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => {
+                                        const nextVal = e.target.checked;
+                                        setUserPermissionOverride(
+                                          selectedOverrideUser.user_id,
+                                          mod,
+                                          act.key,
+                                          nextVal,
+                                        );
+                                        logActivity(
+                                          "USERS",
+                                          "UPDATE",
+                                          `${selectedOverrideUser.username}:${mod}.${act.key}`,
+                                          `Mengatur izin khusus ${selectedOverrideUser.full_name} pada ${mod}.${act.key} menjadi ${
+                                            nextVal ? "AKTIF" : "NONAKTIF"
+                                          }.`,
+                                        );
+                                        showToast(
+                                          `Izin khusus ${selectedOverrideUser.full_name} → ${mod}.${act.key} diperbarui`,
+                                          "info",
+                                        );
+                                      }}
+                                      className="h-3.5 w-3.5 accent-emerald-800"
+                                    />
+                                    {act.short}
+                                    {isOverridden && (
+                                      <span className="ml-0.5 text-[10px] font-bold text-amber-700">
+                                        *
+                                      </span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-slate-100 bg-slate-50/50 px-5 py-2.5 text-[11px] text-slate-500">
+                Tanda <strong className="text-amber-700">*</strong> menandakan izin khusus (
+                <code>user_permissions</code>) yang berbeda dari default role. Perubahan langsung
+                berlaku saat beralih akun lewat Role Switcher di sidebar.
+              </div>
+            </div>
+          )}
         </div>
       )}
 

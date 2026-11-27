@@ -36,12 +36,14 @@ import {
   ROLE_PERMISSION_DEFAULTS,
   RoleName,
   SessionUser,
+  UserPermissionOverrides,
 } from "@/lib/types/domain";
 
 interface AppStoreContextValue {
   // Auth & RBAC state
   currentUser: SessionUser | null;
   isOwner: boolean;
+  isManagerOrOwner: boolean;
   can: (moduleCode: ModuleCode, action: PermissionAction) => boolean;
   loginAsRole: (role: RoleName) => void;
   loginWithCredentials: (username: string, password: string) => { ok: boolean; message?: string };
@@ -53,6 +55,15 @@ interface AppStoreContextValue {
     action: PermissionAction,
     value: boolean,
   ) => void;
+  userPermissions: UserPermissionOverrides;
+  setUserPermissionOverride: (
+    userId: number,
+    moduleCode: ModuleCode,
+    action: PermissionAction,
+    value: boolean,
+  ) => void;
+  resetUserPermissionOverrides: (userId: number) => void;
+  getEffectivePermissions: (user: MockUser) => PermissionMatrix;
 
   // Domain state (interaktif di UI, siap diganti TanStack Query + API)
   users: MockUser[];
@@ -88,10 +99,33 @@ interface AppStoreContextValue {
 
 const AppStoreContext = createContext<AppStoreContextValue | null>(null);
 
+function mergePermissions(
+  roleMatrix: PermissionMatrix,
+  userOverride?: Partial<Record<ModuleCode, Partial<Record<PermissionAction, boolean>>>>,
+): PermissionMatrix {
+  const merged = structuredClone(roleMatrix);
+  if (!userOverride) return merged;
+  for (const mod of ["SALES", "SCM", "FINANCE", "HR"] as ModuleCode[]) {
+    const modOv = userOverride[mod];
+    if (!modOv) continue;
+    for (const act of ["view", "create", "edit", "delete"] as PermissionAction[]) {
+      if (modOv[act] !== undefined) {
+        merged[mod][act] = modOv[act]!;
+      }
+    }
+  }
+  return merged;
+}
+
 function toSessionUser(
   user: MockUser,
   matrix: Record<RoleName, PermissionMatrix>,
+  userOverrides: UserPermissionOverrides,
 ): SessionUser {
+  const effective =
+    user.role_name === "Owner"
+      ? matrix.Owner
+      : mergePermissions(matrix[user.role_name], userOverrides[user.user_id]);
   return {
     user_id: user.user_id,
     full_name: user.full_name,
@@ -100,7 +134,7 @@ function toSessionUser(
     employment_type: user.employment_type,
     pay_scheme: user.pay_scheme,
     status: user.status,
-    permissions: matrix[user.role_name],
+    permissions: effective,
   };
 }
 
@@ -108,6 +142,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [rolePermissions, setRolePermissions] = useState<Record<RoleName, PermissionMatrix>>(
     () => structuredClone(ROLE_PERMISSION_DEFAULTS),
   );
+  const [userPermissions, setUserPermissions] = useState<UserPermissionOverrides>({});
   const [users, setUsers] = useState<MockUser[]>(INITIAL_USERS);
   const [activeUserId, setActiveUserId] = useState<number | null>(1); // Default Owner agar UI langsung terlihat
   const [products, setProducts] = useState<MockProduct[]>(INITIAL_PRODUCTS);
@@ -126,10 +161,45 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     if (activeUserId === null) return null;
     const found = users.find((u) => u.user_id === activeUserId);
     if (!found || found.status !== "Aktif") return null;
-    return toSessionUser(found, rolePermissions);
-  }, [activeUserId, users, rolePermissions]);
+    return toSessionUser(found, rolePermissions, userPermissions);
+  }, [activeUserId, users, rolePermissions, userPermissions]);
 
   const isOwner = currentUser?.role_name === "Owner";
+  const isManagerOrOwner =
+    currentUser?.role_name === "Owner" || currentUser?.role_name === "Manager/SDM";
+
+  const getEffectivePermissions = (user: MockUser): PermissionMatrix => {
+    if (user.role_name === "Owner") return rolePermissions.Owner;
+    return mergePermissions(rolePermissions[user.role_name], userPermissions[user.user_id]);
+  };
+
+  const setUserPermissionOverride = (
+    userId: number,
+    moduleCode: ModuleCode,
+    action: PermissionAction,
+    value: boolean,
+  ) => {
+    const target = users.find((u) => u.user_id === userId);
+    if (!target || target.role_name === "Owner") return;
+    setUserPermissions((prev) => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        [moduleCode]: {
+          ...prev[userId]?.[moduleCode],
+          [action]: value,
+        },
+      },
+    }));
+  };
+
+  const resetUserPermissionOverrides = (userId: number) => {
+    setUserPermissions((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+  };
 
   const can = (moduleCode: ModuleCode, action: PermissionAction): boolean => {
     if (!currentUser) return false;
@@ -284,12 +354,17 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentUser,
         isOwner,
+        isManagerOrOwner,
         can,
         loginAsRole,
         loginWithCredentials,
         logout,
         rolePermissions,
         updateRolePermission,
+        userPermissions,
+        setUserPermissionOverride,
+        resetUserPermissionOverrides,
+        getEffectivePermissions,
         users,
         setUsers,
         products,

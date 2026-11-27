@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Eye, EyeOff, X } from "lucide-react";
 import { FormField } from "@/components/ui/FormField";
 import { MockUser } from "@/lib/mock/data";
@@ -23,6 +23,7 @@ interface EmployeeFormModalProps {
   open: boolean;
   mode: "create" | "edit";
   isOwner: boolean;
+  canManageSalary?: boolean;
   initialUser?: MockUser | null;
   existingUsernames: string[];
   onSubmit: (values: EmployeeFormValues) => void;
@@ -35,12 +36,14 @@ const MANAGER_ROLES: RoleName[] = ["Pegawai", "Anak PKL"];
 function EmployeeFormBody({
   mode,
   isOwner,
+  canManageSalary,
   initialUser,
   existingUsernames,
   onSubmit,
   onClose,
 }: Omit<EmployeeFormModalProps, "open">) {
   const isEdit = mode === "edit" && Boolean(initialUser);
+  const allowSalary = canManageSalary ?? isOwner;
 
   const [fullName, setFullName] = useState(isEdit && initialUser ? initialUser.full_name : "");
   const [username, setUsername] = useState(isEdit && initialUser ? initialUser.username : "");
@@ -60,12 +63,20 @@ function EmployeeFormBody({
     isEdit && initialUser ? String(Number(initialUser.base_salary)) : "0",
   );
   const [startDate, setStartDate] = useState(
-    isEdit && initialUser ? initialUser.start_date : new Date().toISOString().slice(0, 10),
+    isEdit && initialUser ? initialUser.start_date : "",
   );
   const [endDate, setEndDate] = useState(
     isEdit && initialUser?.end_date ? initialUser.end_date : "",
   );
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isEdit) return;
+    const id = setTimeout(() => {
+      setStartDate((prev) => prev || new Date().toISOString().slice(0, 10));
+    }, 0);
+    return () => clearTimeout(id);
+  }, [isEdit]);
 
   const allowedRoles = isOwner ? OWNER_ROLES : MANAGER_ROLES;
   const isPklRole = roleName === "Anak PKL";
@@ -116,7 +127,7 @@ function EmployeeFormBody({
       role_name: roleName,
       employment_type: roleName === "Anak PKL" ? "PKL" : employmentType,
       pay_scheme: payScheme,
-      base_salary: isOwner ? String(Math.max(0, Number(baseSalary) || 0)) : "0",
+      base_salary: allowSalary ? String(Math.max(0, Number(baseSalary) || 0)) : "0",
       start_date: startDate || new Date().toISOString().slice(0, 10),
       end_date: endDate.trim() ? endDate.trim() : null,
     });
@@ -136,7 +147,9 @@ function EmployeeFormBody({
             </h2>
             {!isOwner && mode === "create" && (
               <p className="mt-0.5 text-xs text-slate-500">
-                Role dibatasi ke Pegawai / Anak PKL; gaji pokok diatur belakangan oleh Owner.
+                {allowSalary
+                  ? "Role dibatasi ke Pegawai / Anak PKL. Anda dapat langsung mengatur skema upah & gaji pokok."
+                  : "Role dibatasi ke Pegawai / Anak PKL; gaji pokok diatur belakangan oleh Owner."}
               </p>
             )}
           </div>
@@ -271,10 +284,10 @@ function EmployeeFormBody({
             </FormField>
           </div>
 
-          {isOwner && (
+          {allowSalary && (
             <FormField
               label="Gaji Pokok (Rp)"
-              hint="Hanya terlihat dan dapat diatur oleh Owner."
+              hint="Dapat diatur oleh Owner dan Manager/SDM."
             >
               <input
                 type="number"
@@ -321,6 +334,6 @@ function EmployeeFormBody({
  */
 export function EmployeeFormModal(props: EmployeeFormModalProps) {
   if (!props.open) return null;
-  const formKey = `${props.mode}-${props.initialUser?.user_id ?? "new"}-${props.isOwner ? "owner" : "mgr"}`;
+  const formKey = `${props.mode}-${props.initialUser?.user_id ?? "new"}-${props.isOwner ? "owner" : "mgr"}-${props.canManageSalary ? "sal" : "nosal"}`;
   return <EmployeeFormBody key={formKey} {...props} />;
 }

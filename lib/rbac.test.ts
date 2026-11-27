@@ -22,17 +22,18 @@ describe("Matriks RBAC 4 Role (lib/rbac.ts)", () => {
     expect(() => assertAccess(owner, { permission: ["HR", "delete"] })).not.toThrow();
   });
 
-  it("Manager/SDM ditolak (403) pada fitur Owner-only, tetapi boleh V/E HR non-sensitif dan V/C/E modul operasional", () => {
+  it("Manager/SDM ditolak (403) pada fitur Admin Owner-only, tetapi memiliki V/C/E penuh di SALES, SCM, FINANCE, dan HR", () => {
     const manager = makeUser("Manager/SDM");
-    // Hard guard Owner-only (user management, payroll, dasbor penjualan, laporan keuangan)
+    // Hard guard Admin Owner-only (user management & RBAC settings)
     expect(() => assertAccess(manager, { roles: ["Owner"] })).toThrow(ForbiddenError);
-    // Operasional & HR non-sensitif
+    // Operasional & HR penuh (tanpa delete)
     expect(() => assertAccess(manager, { permission: ["SALES", "create"] })).not.toThrow();
     expect(() => assertAccess(manager, { permission: ["FINANCE", "edit"] })).not.toThrow();
     expect(() => assertAccess(manager, { permission: ["HR", "view"] })).not.toThrow();
+    expect(() => assertAccess(manager, { permission: ["HR", "create"] })).not.toThrow();
     expect(() => assertAccess(manager, { permission: ["HR", "edit"] })).not.toThrow();
-    // Tidak boleh create/delete HR atau delete modul apa pun
-    expect(() => assertAccess(manager, { permission: ["HR", "create"] })).toThrow(ForbiddenError);
+    // Tidak boleh delete di modul mana pun
+    expect(() => assertAccess(manager, { permission: ["HR", "delete"] })).toThrow(ForbiddenError);
     expect(() => assertAccess(manager, { permission: ["SALES", "delete"] })).toThrow(ForbiddenError);
   });
 
@@ -50,16 +51,15 @@ describe("Matriks RBAC 4 Role (lib/rbac.ts)", () => {
     );
   });
 
-  it("Anak PKL hanya boleh view di FINANCE (403 pada verifikasi pembayaran) dan 403 pada seluruh HR", () => {
+  it("Anak PKL fokus pada SALES & SCM saja; secara default 403 pada FINANCE dan HR", () => {
     const pkl = makeUser("Anak PKL");
     expect(() => assertAccess(pkl, { permission: ["SALES", "create"] })).not.toThrow();
     expect(() => assertAccess(pkl, { permission: ["SCM", "edit"] })).not.toThrow();
-    expect(() => assertAccess(pkl, { permission: ["FINANCE", "view"] })).not.toThrow();
 
-    // Verifikasi pembayaran = FINANCE.edit -> harus ditolak 403
+    // Default Anak PKL tidak punya akses Finance maupun HR (kecuali lewat user_permissions)
+    expect(() => assertAccess(pkl, { permission: ["FINANCE", "view"] })).toThrow(ForbiddenError);
     expect(() => assertAccess(pkl, { permission: ["FINANCE", "edit"] })).toThrow(ForbiddenError);
     expect(() => assertAccess(pkl, { permission: ["FINANCE", "create"] })).toThrow(ForbiddenError);
-    // Seluruh HR -> harus ditolak 403
     expect(() => assertAccess(pkl, { permission: ["HR", "view"] })).toThrow(ForbiddenError);
   });
 

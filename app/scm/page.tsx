@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -86,11 +86,18 @@ export default function ScmPage() {
   // Persiapan stok online state
   const [prepProductId, setPrepProductId] = useState<number>(1);
   const [prepQty, setPrepQty] = useState<number>(15);
-  const [prepDate, setPrepDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [prepDate, setPrepDate] = useState<string>("");
   const [prepNote, setPrepNote] = useState<string>("");
   const [prepHistory, setPrepHistory] = useState<
     { id: number; date: string; product: string; qty: number; note: string }[]
   >([]);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setPrepDate((prev) => prev || new Date().toISOString().slice(0, 10));
+    }, 0);
+    return () => clearTimeout(id);
+  }, []);
 
   // Modal Tambah Bahan Baku & Supplier
   const [matModalOpen, setMatModalOpen] = useState(false);

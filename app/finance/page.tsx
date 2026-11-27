@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { CheckCircle2, Download, FileText, Lock, Plus, Upload, X } from "lucide-react";
+import { CheckCircle2, Download, FileText, Lock, Plus, ShieldAlert, Upload, X } from "lucide-react";
 import { AppLayout } from "@/components/layouts/AppLayout";
 import { useAppStore } from "@/components/providers/AppStoreProvider";
 import { ActionMenu, ActionMenuItem } from "@/components/ui/ActionMenu";
@@ -23,7 +23,7 @@ const ALLOWED_EXT = /\.(jpg|jpeg|png|pdf)$/i;
 export default function FinancePage() {
   const {
     currentUser,
-    isOwner,
+    isManagerOrOwner,
     can,
     invoices,
     setInvoices,
@@ -339,6 +339,24 @@ export default function FinancePage() {
     },
   ];
 
+  if (!can("FINANCE", "view")) {
+    return (
+      <AppLayout>
+        <div className="mx-auto flex max-w-lg flex-col items-center rounded-2xl border border-slate-200 bg-white px-8 py-14 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <ShieldAlert className="h-6 w-6" />
+          </div>
+          <h1 className="mt-4 text-xl font-bold text-slate-900">Akses Ditolak (403)</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Modul Finance &amp; Accounting tidak tersedia secara default untuk role Anak PKL. Owner
+            dapat memberikan izin khusus per individu lewat menu{" "}
+            <strong>Pengguna &amp; Hak Akses</strong>.
+          </p>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <PageHeader
@@ -371,7 +389,7 @@ export default function FinancePage() {
             { id: "invoices", label: "Invoice & Verifikasi" },
             { id: "expenses", label: "Biaya (Expenses)" },
             { id: "cashflow", label: "Arus Kas & Piutang" },
-            { id: "report", label: "Laporan Bulanan (Owner)" },
+            { id: "report", label: "Laporan Bulanan (Owner & Manager)" },
           ] as { id: FinanceTab; label: string }[]
         ).map((tab) => (
           <button
@@ -462,7 +480,7 @@ export default function FinancePage() {
       )}
 
       {activeTab === "report" &&
-        (isOwner ? (
+        (isManagerOrOwner ? (
           <div className="space-y-5">
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs">
               <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -609,9 +627,12 @@ export default function FinancePage() {
         ) : (
           <div className="flex flex-col items-center rounded-xl border border-slate-200 bg-white p-12 text-center">
             <Lock className="h-8 w-8 text-slate-400" />
-            <h3 className="mt-3 text-base font-bold text-slate-900">Akses Khusus Owner (403)</h3>
+            <h3 className="mt-3 text-base font-bold text-slate-900">
+              Akses Khusus Owner &amp; Manager (403)
+            </h3>
             <p className="mt-1 max-w-md text-sm text-slate-600">
-              Laporan keuangan bulanan dan ekspor PDF/Excel dikunci khusus untuk Owner.
+              Laporan keuangan bulanan, laba bersih, dan ekspor PDF/Excel hanya dapat diakses oleh
+              Owner dan Manager/SDM.
             </p>
           </div>
         ))}
